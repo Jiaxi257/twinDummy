@@ -116,7 +116,7 @@ function startSiteInner(existing){
  else if(d?.rd){const L=SITE_DATA.layout;model=G.blank(L.columns,L.rows,L.cell);NSContext.mask(d,model);G.syncGround(model)}
  else model=G.blank();
  model.startMode=existing?'existing':'empty';
- if(d){model.siteName=d.name;model.parcels=SITE_DATA.parcels||[];if(d.rd){model.siteId='nijkerk-'+SITE_DATA.origin.join('-');model.site={name:d.name,kind:d.kind||null,code:d.code||null,rdOrigin:SITE_DATA.origin,crs:'EPSG:28992',cellSize:5,context:LANDSCAPE_DATA.source}}}
+ if(d){model.siteName=d.name;model.parcels=SITE_DATA.parcels||[];if(d.rd){model.siteId='nijkerk-'+SITE_DATA.origin.join('-')+(SITE_DATA.angle?'-r'+Math.round(SITE_DATA.angle*10)/10:'');model.site={name:d.name,kind:d.kind||null,code:d.code||null,rdCenter:d.rd.center||null,rotationDeg:SITE_DATA.angle||0,size:d.rd.size||null,crs:'EPSG:28992',cellSize:model.grid.cellSize,context:LANDSCAPE_DATA.source}}}
  G.validate(model);bump();tool='select';cancelAnimationFrame(cameraFrame);tilt=1;basis=cameraBasis();view='3d';resetCamera();selection=null;selectedRect=null;history=[];future=[];gesture=null;hover=null;
  $('#startDialog').close();hasSession=true;tilt=0;basis=cameraBasis();view='2d';persist();render();animateView('3d');
  if(note){$('#toast').textContent=`${t('existingImported')} · ${note.buildings} ${t('buildings').toLowerCase()} · ${note.trees} ${t('trees').toLowerCase()}`;$('#toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('show'),3500)}

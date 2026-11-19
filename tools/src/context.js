@@ -7,14 +7,18 @@ const NSContext=(()=>{
  const r3=v=>Math.round(v*1000)/1000;
  // ---- grid layout ---------------------------------------------------------------------------------------------
  function layout(detail,cell){
-  const o=detail.rd.origin;
-  if(o&&cell===5){const n=Math.round(detail.rd.size/cell);return{x0:o[0],y0:o[1]+detail.rd.size,cell,columns:n,rows:n,margin:60/cell,width:detail.rd.size,height:detail.rd.size}} // fixed 100 × 100 m site
+  if(detail.rd.size){ // the 100 × 100 m site: a square around its centre, possibly rotated; grid x runs along its rotated east edge
+   const size=detail.rd.size,H=size/2,c=detail.rd.center,a=detail.rd.angle||0,t=a*Math.PI/180,co=Math.cos(t),si=Math.sin(t),n=Math.round(size/cell);
+   return{x0:Math.round(c[0]),y0:Math.round(c[1]),center:c,angle:a,cell,columns:n,rows:n,margin:60/cell,width:size,height:size,
+    toGrid:([x,y])=>{const dx=x-c[0],dy=y-c[1];return[r3((dx*co+dy*si+H)/cell),r3((H-(-dx*si+dy*co))/cell)]},
+    fromGrid:(gx,gy)=>{const u=gx*cell-H,v=H-gy*cell;return[c[0]+u*co-v*si,c[1]+u*si+v*co]}};
+  }
   const b=NSData.bboxOf(detail.rd.geometry),cx=(b[0]+b[2])/2,cy=(b[1]+b[3])/2;
   const minx=Math.min(b[0],cx-MIN_SPAN/2),maxx=Math.max(b[2],cx+MIN_SPAN/2),miny=Math.min(b[1],cy-MIN_SPAN/2),maxy=Math.max(b[3],cy+MIN_SPAN/2);
   const x0=Math.floor(minx/cell)*cell,y0=Math.ceil(maxy/cell)*cell;
   const columns=Math.max(1,Math.ceil((maxx-x0)/cell)),rows=Math.max(1,Math.ceil((y0-miny)/cell));
   const margin=Math.max(60,0.12*Math.max(columns,rows)*cell)/cell; // context margin, in cells
-  return{x0,y0,cell,columns,rows,margin,width:columns*cell,height:rows*cell};
+  return{x0,y0,cell,columns,rows,margin,width:columns*cell,height:rows*cell,angle:0,toGrid:([x,y])=>[r3((x-x0)/cell),r3((y0-y)/cell)],fromGrid:(gx,gy)=>[x0+gx*cell,y0-gy*cell]};
  }
  // Cell size options for a site: the finest size keeping the grid workable, plus the alternatives.
  function cellOptions(detail){
@@ -39,8 +43,7 @@ const NSContext=(()=>{
 
  // ---- context: everything around and under the grid that is not part of the design ----------------------------------
  function apply(detail,cell){
-  const L=layout(detail,cell),{x0,y0}=L,M=L.margin,lo=[-M,-M],hx=L.columns+M,hy=L.rows+M;
-  const toGrid=([x,y])=>[r3((x-x0)/cell),r3((y0-y)/cell)];
+  const L=layout(detail,cell),{x0,y0}=L,M=L.margin,lo=[-M,-M],hx=L.columns+M,hy=L.rows+M,toGrid=L.toGrid;
   const inSite=(x,y)=>NSData.contains(detail.rd.geometry,x,y); // RD
   const ctx=[],ground=[],trees=[],m=detail.model;
   if(m){
@@ -55,22 +58,22 @@ const NSContext=(()=>{
   const parcels=[];
   for(const p of detail.parcels||[])for(const poly of NSData.polys(p.geometry)){const ring=clip(poly[0].map(([lon,lat])=>toGrid(NSData.geo.toRd(lon,lat))),[0,0],L.columns,L.rows);if(ring)parcels.push({id:String(p.id),label:p.label||'',area:p.area??null,ring:ring.map(q=>[r3(q[0]),r3(q[1])])})}
   const outline=NSData.polys(detail.rd.geometry).map(p=>p[0].map(toGrid));
-  SITE_DATA.context=ctx;SITE_DATA.origin=[x0,y0];SITE_DATA.parcels=parcels;SITE_DATA.layout=L;SITE_DATA.outline=outline;
+  SITE_DATA.context=ctx;SITE_DATA.origin=[x0,y0];SITE_DATA.angle=L.angle;SITE_DATA.parcels=parcels;SITE_DATA.layout=L;SITE_DATA.outline=outline;
   LANDSCAPE_DATA.ground=ground;LANDSCAPE_DATA.trees=trees;LANDSCAPE_DATA.window=[lo[0],lo[1],hx,hy];
   LANDSCAPE_DATA.source=m?(m.source==='live'?'PDOK BGT / 3DBAG (live)':'PDOK BGT / 3DBAG (bundled snapshot '+(m.fetched||'')+')'):'none';
   return{origin:[x0,y0],cell,columns:L.columns,rows:L.rows,buildings:ctx.length,ground:ground.length,trees:trees.length};
  }
  // Cells whose centre lies inside the selected polygon become built-up (1); the rest stay unassigned (0).
  function mask(detail,model){
-  const L=SITE_DATA.layout,{x0,y0,cell,columns:C,rows:R}=L;
-  for(let r=0;r<R;r++)for(let c=0;c<C;c++)model.cells[r*C+c]=NSData.contains(detail.rd.geometry,x0+(c+.5)*cell,y0-(r+.5)*cell)?1:0;
+  const L=SITE_DATA.layout,{columns:C,rows:R}=L;
+  for(let r=0;r<R;r++)for(let c=0;c<C;c++){const p=L.fromGrid(c+.5,r+.5);model.cells[r*C+c]=NSData.contains(detail.rd.geometry,p[0],p[1])?1:0}
  }
  // Existing site: BGT road / plant / water become grid cells (and so road, plant and water entities); 3DBAG buildings and
  // BGT trees inside the site become editable objects that keep their real footprint and position. Returns a validated model.
  const KIND_CODE={road:2,green:3,hedge:3,water:4};
  function existing(detail){
-  const G=GridModel,L=SITE_DATA.layout,{x0,y0,cell,columns:C,rows:R}=L,m=G.blank(C,R,cell);
-  const toGrid=([x,y])=>[r3((x-x0)/cell),r3((y0-y)/cell)],inSite=(gx,gy)=>NSData.contains(detail.rd.geometry,x0+gx*cell,y0-gy*cell);
+  const G=GridModel,L=SITE_DATA.layout,{cell,columns:C,rows:R}=L,m=G.blank(C,R,cell);
+  const toGrid=L.toGrid,inSite=(gx,gy)=>{const p=L.fromGrid(gx,gy);return NSData.contains(detail.rd.geometry,p[0],p[1])};
   // bucket BGT polygons by cell so each sample only tests nearby polygons
   const buckets=new Map(),B=4; // bucket = 4 × 4 cells
   for(const g of detail.model?.ground||[]){
@@ -89,7 +92,7 @@ const NSContext=(()=>{
   }
   const stats={buildings:0,trees:0,skippedTrees:0},buildings=[];
   for(const b of detail.model?.buildings||[]){
-   const [rx,ry]=centroidOf(b.parts.map(p=>p.rings[0]));if(!inSite((rx-x0)/cell,(y0-ry)/cell))continue;
+   const [rx,ry]=centroidOf(b.parts.map(p=>p.rings[0]));if(!NSData.contains(detail.rd.geometry,rx,ry))continue;
    const parts=b.parts.map(p=>({h:p.h,ring:p.rings[0].map(toGrid)})),pts=parts.flatMap(p=>p.ring);
    let ox=Infinity,oy=Infinity;for(const p of pts){if(p[0]<ox)ox=p[0];if(p[1]<oy)oy=p[1]}
    const h=Math.max(3,Math.min(60,Math.round((b.h||Math.max(...parts.map(p=>p.h)))*10)/10));

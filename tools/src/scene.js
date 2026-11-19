@@ -139,6 +139,8 @@ function renderOverlay(){
 // Grid size labels around the canvas
 function renderGridText(){
  const g=model.grid,c=g.cellSize;
+ // north arrow: RD north expressed in grid coordinates (the site may be rotated), projected to the screen
+ const ar=$('.north span');if(ar){const t=(SITE_DATA.angle||0)*Math.PI/180,cx=g.columns/2,cy=g.rows/2,p0=project(cx,cy),p1=project(cx+Math.sin(t)*4,cy-Math.cos(t)*4);ar.style.display='inline-block';ar.style.transform=`rotate(${Math.atan2(p1[0]-p0[0],-(p1[1]-p0[1]))*180/Math.PI}deg)`}
  const badge=$('.canvas-top .badge');if(badge)badge.textContent=`${g.columns} × ${g.rows}`;
  const meta=$('.canvas-meta strong');if(meta)meta.textContent=`${Math.round(g.columns*c)} × ${Math.round(g.rows*c)} m`;
  const cs=$('[data-i=cellSize]');if(cs)cs.textContent=`${c} × ${c} m per cell`;
