@@ -1,0 +1,11 @@
+.world-search .picker-modes{display:flex;gap:5px;margin-top:12px;padding-top:12px;border-top:1px solid #e1e7dc}
+#world-entry .picker-modes button{flex:1;font-size:12.5px;padding:7px 6px}
+.world-search .picker-note{margin:8px 0 0;font-size:11.5px;color:var(--muted);line-height:1.45}
+#world-entry #draw-finish{margin-top:8px;width:100%}#world-entry #draw-finish[hidden]{display:none}
+.world-card .model-status{margin-top:8px;padding-top:8px;border-top:1px solid #e1e7dc;color:#3f5a4c;font-size:12px;line-height:1.5}
+.world-card .card-actions{display:flex;gap:7px;margin-top:4px}#world-entry .card-actions button:disabled{opacity:.5;cursor:progress}
+.world-legend{position:absolute;z-index:1;right:76px;bottom:38px;display:flex;flex-wrap:wrap;gap:4px 12px;max-width:min(470px,calc(100vw - 480px));background:#fffffcf0;border:1px solid #c4d0c7;border-radius:9px;padding:7px 11px;font-size:11.5px;color:#3d5649}
+.world-legend:empty{display:none}.world-legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px;border:1px solid #c3ccbf}
+#startDialog{max-width:560px}#startDialog p{line-height:1.55}#startExisting:disabled{opacity:.45;cursor:not-allowed}
+@media(max-width:900px){.world-legend{display:none}}
+@media(max-width:600px){.world-card{bottom:24px;max-height:40vh;overflow:auto}.world-search .picker-note{display:none}}
