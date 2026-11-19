@@ -29,7 +29,7 @@ body = must(body, "Synthetic site · Untextured block geometry · Illustrative m
 editor = src('src/editor.js')
 editor = must(editor, "worldMap:'World map'", "worldMap:'Site map'")
 editor = must(editor, "prototype:'Hoevelaken · Grid approximation · Default materials'", "prototype:'Nijkerk · 3DBAG LoD1.3 + BGT context · 100 × 100 m design window'")
-editor = must(editor, "function applyMask(d){const[lon0", "function applyMask(d){if(d.rd){NSContext.mask(d,model.cells);G.syncGround(model);return}const[lon0")
+editor = must(editor, "function applyMask(d){const[lon0", "function applyMask(d){if(d.rd){NSContext.mask(d,model);G.syncGround(model);return}const[lon0")
 
 # The old Hoevelaken SITE_DATA / LANDSCAPE_DATA are replaced by empty containers that NSContext fills per site.
 site_data = "const SITE_DATA={context:[],buildings:[],trees:[],parcels:[],origin:[0,0],crs:'EPSG:28992'};"
@@ -39,7 +39,7 @@ S = lambda code: '<script>' + code + '\n</script>'
 out = (head + '\n</style><style>' + CSS + assets_line + '\n' + body
        + S(site_data) + S(src('src/gridmodel.js')) + S(landscape_data) + S(src('src/landscape.js'))
        + S(src('src/geo.js') + '\n' + src('src/data.js') + '\n' + src('src/context.js'))
-       + S(editor) + S(src('src/direct.js')) + S(src('src/maplibre.js')) + S(src('src/picker.js'))
+       + S(src('src/scene.js')) + S(editor) + S(src('src/direct.js')) + S(src('src/maplibre.js')) + S(src('src/picker.js'))
        + '</body></html>\n')
 open('index.html', 'w', encoding='utf-8').write(out)
 # dist/: what gets published (page + data tiles + aerial packs)

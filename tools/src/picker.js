@@ -69,7 +69,8 @@ const polysOf=g=>D.polys(g);
 function multi(geoms){return{type:'MultiPolygon',coordinates:geoms.flatMap(polysOf)}}
 function extentFor(rdGeom){
  const b=D.bboxOf(rdGeom),cx=(b[0]+b[2])/2,cy=(b[1]+b[3])/2;
- return[Math.min(b[0],cx-100)-20,Math.min(b[1],cy-100)-20,Math.max(b[2],cx+100)+20,Math.max(b[3],cy+100)+20];
+ const m=Math.max(80,.15*Math.max(b[2]-b[0],b[3]-b[1])); // context margin around the site
+ return[Math.min(b[0],cx-50)-m,Math.min(b[1],cy-50)-m,Math.max(b[2],cx+50)+m,Math.max(b[3],cy+50)+m];
 }
 function octagon([x,y],r){const a=[];for(let i=0;i<=8;i++){const t=i*Math.PI/4+Math.PI/8;a.push(D.geo.toWgs(x+r*Math.cos(t),y+r*Math.sin(t)))}return[a]}
 const wgsRing=r=>{const a=r.map(([x,y])=>D.geo.toWgs(x,y));if(a.length&&(a[0][0]!==a.at(-1)[0]||a[0][1]!==a.at(-1)[1]))a.push(a[0]);return a};
@@ -224,7 +225,7 @@ async function select(s,{fly=true}={}){
 async function loadModel(){
  modelCtl?.abort();modelCtl=new AbortController();const mine=modelCtl,ext=extentFor(sel.rd);
  model=null;showModel(null);
- if((ext[2]-ext[0])*(ext[3]-ext[1])>D.MAX_AREA){loading=null;message='Area too large (bounding box over 1.5 km²); the model was not loaded. Choose a smaller neighbourhood, parcel or drawn area.';renderText();return}
+ if((ext[2]-ext[0])*(ext[3]-ext[1])>D.MAX_AREA){loading=null;message='Area too large (bounding box over 4 km² with its surroundings); the model was not loaded. Choose a smaller neighbourhood, parcel or drawn area.';renderText();return}
  message='';loading=[0,1];renderText();
  try{const r=await D.model(ext,(a,b)=>{if(mine===modelCtl){loading=[a,b];renderCard()}},mine.signal);if(mine!==modelCtl)return;model=r;loading=null;showModel(r);
   if(r.source==='sample'&&!r.buildings.length&&!r.ground.length)message='This area is outside Nijkerk, which is all the bundled snapshot covers. Open the hosted live version to load any area in the Netherlands.';
@@ -275,7 +276,7 @@ async function enterSite(){
  if(!hasModel&&m){status('Preparing base map…');window.__basemap=await capture(sel.center);status('')}
  // BRK parcels covering the 100 × 100 m design window, shown as locked outlines in the editor
  let gridParcels=[];
- try{status('Loading parcel boundaries…');const [cx,cy]=sel.centerRd,a=D.geo.toWgs(cx-55,cy-55),b=D.geo.toWgs(cx+55,cy+55);gridParcels=(await D.parcels([a[0],a[1],b[0],b[1]])).list}catch{}
+ try{status('Loading parcel boundaries…');const r=D.bboxOf(sel.rd),[cx,cy]=sel.centerRd,a=D.geo.toWgs(Math.min(r[0],cx-55)-10,Math.min(r[1],cy-55)-10),b=D.geo.toWgs(Math.max(r[2],cx+55)+10,Math.max(r[3],cy+55)+10);gridParcels=(await D.parcels([a[0],a[1],b[0],b[1]])).list}catch{}
  status('');
  document.body.classList.remove('world-is-open');
  window.dispatchEvent(new CustomEvent('enter-design-site',{detail:{name:sel.name,kind:sel.kind,code:sel.code||null,geometry:sel.geometry,center:sel.center,rd:{geometry:sel.rd,center:sel.centerRd},model:hasModel?model:null,parcels:gridParcels,study:false}}));

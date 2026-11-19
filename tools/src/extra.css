@@ -9,3 +9,5 @@
 #startDialog{max-width:560px}#startDialog p{line-height:1.55}#startExisting:disabled{opacity:.45;cursor:not-allowed}
 @media(max-width:900px){.world-legend{display:none}}
 @media(max-width:600px){.world-card{bottom:24px;max-height:40vh;overflow:auto}.world-search .picker-note{display:none}}
+#startDialog .cell-choice{display:grid;gap:5px;margin:4px 0 14px}#startDialog .cell-choice select{font:inherit;padding:8px;border:1px solid #c8d5cb;border-radius:7px;background:#fff}#startDialog .cell-choice small{color:var(--muted);font-size:11.5px}#startDialog .cell-choice[hidden]{display:none}
+#canvasWrap{touch-action:none}

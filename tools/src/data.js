@@ -7,7 +7,7 @@ const NSData=(()=>{
  const BRK='https://api.pdok.nl/kadaster/brk-kadastrale-kaart/ogc/v1/collections/perceel/items';
  const BGT='https://api.pdok.nl/lv/bgt/ogc/v1/collections';
  const BAG3D='https://api.3dbag.nl/collections/pand/items';
- const GM='GM0267', MAX_AREA=1.5e6;
+ const GM='GM0267', MAX_AREA=4e6;
  const BGT_COLLS=['wegdeel','ondersteunendwegdeel','waterdeel','ondersteunendwaterdeel','begroeidterreindeel','vegetatieobject_punt'];
  const geo=RDGEO;
  let online=null, sample=null;
@@ -74,7 +74,7 @@ const NSData=(()=>{
  }
  async function bundledParcels(b){
   const c=[geo.toRd(b[0],b[1]),geo.toRd(b[2],b[3]),geo.toRd(b[0],b[3]),geo.toRd(b[2],b[1])],ext=[Math.min(...c.map(p=>p[0])),Math.min(...c.map(p=>p[1])),Math.max(...c.map(p=>p[0])),Math.max(...c.map(p=>p[1]))];
-  const {keys}=tileKeys(ext);if(keys.length>9)return[];
+  const {keys}=tileKeys(ext);if(keys.length>30)return[];
   const out=[];for(const d of await Promise.all(keys.map(loadTile)))for(const p of d.parcels)if(overlaps(p.rdBbox,ext)){if(!p._wgs)p._wgs=toWgsGeom(p.rd);out.push({id:p.id,label:p.label,area:p.area,geometry:p._wgs})}
   return out;
  }
@@ -93,7 +93,7 @@ const NSData=(()=>{
  }
  async function parcels(b,signal){
   try{
-   const fs=await paged(qs(BRK,{f:'json',limit:1000,bbox:b.join(',')}),{signal},5);
+   const fs=await paged(qs(BRK,{f:'json',limit:1000,bbox:b.join(',')}),{signal},12);
    return{source:'live',list:fs.map(f=>{const p=f.properties;return{id:p.identificatie_lokaal_id,label:[p.akr_kadastrale_gemeente_code_waarde,p.sectie,p.perceelnummer].filter(v=>v!=null).join(' '),area:p.kadastrale_grootte_waarde,geometry:f.geometry}})};
   }catch(e){if(signal?.aborted)throw e;try{return{source:'sample',list:await bundledParcels(b)}}catch{return{source:'sample',list:[]}}}
  }

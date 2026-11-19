@@ -27,7 +27,7 @@
    }else{
      if(e.type==='road')fields.push(choice('material','material',G.GROUND,e.material));
      if(e.type==='plant')fields.push(choice('plantType','plantType',G.PLANTS,e.plantType));
-     fields.push(input('w','columns',e.w,1,20),input('d','rows',e.d,1,20));
+     fields.push(input('w','columns',e.w,1,model.grid.columns),input('d','rows',e.d,1,model.grid.rows));
    }
    dialog.querySelector('h2').textContent=t(e.type)+' · '+e.id;
    dialog.querySelector('.entity-fields').innerHTML=fields.join('');
@@ -60,12 +60,12 @@
    scene.querySelector('#ghost').replaceChildren();
  }
  scene.addEventListener('pointerdown',ev=>{
-   const node=ev.target.closest('[data-id]');
-   if(!node||!direct()||ev.button!==0||!ev.isPrimary)return;
-   const e=model.entities.find(item=>item.id===node.dataset.id);
+   const id=pickEvent(ev);
+   if(!id||!direct()||ev.button!==0||!ev.isPrimary)return;
+   const e=model.entities.find(item=>item.id===id);
    if(!e)return;
    ev.stopImmediatePropagation();
-   drag={e,node,pointer:ev.pointerId,start:point(ev),client:[ev.clientX,ev.clientY],moved:false};
+   drag={e,polys:hitPolysFor(e.id),pointer:ev.pointerId,start:point(ev),client:[ev.clientX,ev.clientY],moved:false};
    scene.setPointerCapture(ev.pointerId);
  },true);
  scene.addEventListener('pointermove',ev=>{
@@ -76,13 +76,8 @@
    scene.classList.add('dragging');
    const pos=destination(ev),next={...drag.e,...pos},err=G.placementError(model,next,true);
    const a=project(drag.e.x,drag.e.y),b=project(pos.x,pos.y),ghost=scene.querySelector('#ghost');
-   const copy=drag.node.cloneNode(true);
-   copy.removeAttribute('data-id');
-   copy.setAttribute('transform',`translate(${b[0]-a[0]},${b[1]-a[1]})`);
-   copy.setAttribute('opacity','.85');
-   const stroke=err?'#ad4c38':'#216749';
-   for(const face of copy.querySelectorAll('polygon,circle,path')){face.setAttribute('stroke',stroke);face.setAttribute('stroke-width','1.8')}
-   ghost.replaceChildren(copy);
+   const stroke=err?'#ad4c38':'#216749',dx=b[0]-a[0],dy=b[1]-a[1];
+   ghost.innerHTML=`<g opacity=".8">${drag.polys.map(p=>`<polygon points="${p.map(q=>(q[0]+dx)+','+(q[1]+dy)).join(' ')}" fill="${err?'#e3b3a3':'#cfe0c4'}" fill-opacity=".55" stroke="${stroke}" stroke-width="1.4"/>`).join('')}</g>`;
  },true);
  scene.addEventListener('pointerup',ev=>{
    if(!drag||ev.pointerId!==drag.pointer)return;
@@ -104,7 +99,7 @@
    }
  },true);
  scene.addEventListener('dblclick',ev=>{
-   const id=ev.target.closest('[data-id]')?.dataset.id;
+   const id=pickEvent(ev);
    if(id&&direct()){ev.preventDefault();edit(id)}
  });
  scene.addEventListener('pointercancel',clearDrag);
