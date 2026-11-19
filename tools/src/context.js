@@ -7,6 +7,8 @@ const NSContext=(()=>{
  const r3=v=>Math.round(v*1000)/1000;
  // ---- grid layout ---------------------------------------------------------------------------------------------
  function layout(detail,cell){
+  const o=detail.rd.origin;
+  if(o&&cell===5){const n=Math.round(detail.rd.size/cell);return{x0:o[0],y0:o[1]+detail.rd.size,cell,columns:n,rows:n,margin:60/cell,width:detail.rd.size,height:detail.rd.size}} // fixed 100 × 100 m site
   const b=NSData.bboxOf(detail.rd.geometry),cx=(b[0]+b[2])/2,cy=(b[1]+b[3])/2;
   const minx=Math.min(b[0],cx-MIN_SPAN/2),maxx=Math.max(b[2],cx+MIN_SPAN/2),miny=Math.min(b[1],cy-MIN_SPAN/2),maxy=Math.max(b[3],cy+MIN_SPAN/2);
   const x0=Math.floor(minx/cell)*cell,y0=Math.ceil(maxy/cell)*cell;

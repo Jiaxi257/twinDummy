@@ -1,10 +1,10 @@
 (() => {
 'use strict';
-// Site picker: opens on the whole of Nijkerk; pick a CBS buurt, a BRK parcel (Shift for several) or draw a polygon.
-// The selected extent loads 3DBAG LoD1.3 buildings, BGT surfaces and BGT trees, shown on the map and handed to the editor.
+// Site picker: opens on the whole of Nijkerk. Neighbourhood (CBS) and parcel (BRK) boundaries help to find the place; the site itself
+// is always a 100 × 100 m square on the 5 m RD grid, placed with a click and moved by dragging. The site and its surroundings load 3DBAG LoD1.3 buildings, BGT surfaces and BGT trees, shown on the map and handed to the editor.
 const D=NSData, S=D.decode();
 const entry=document.createElement('section');entry.id='world-entry';document.body.append(entry);
-let m=null,mode='buurt',drawing=false,pts=[],buurten=[],parcels=[],parcelCtl=null,modelCtl=null;
+let m=null,showBuurt=true,showParcel=true,dragSite=null,dragEnded=0,buurten=[],parcels=[],parcelCtl=null,modelCtl=null;
 let gem=S?{...S.gemeente,source:'sample'}:null,sel=null,model=null,loading=null,boundSource='sample',parcelSource=null,message='';
 const el=s=>entry.querySelector(s), FC=f=>({type:'FeatureCollection',features:f});
 const COLORS={road:'#dcded7',green:'#bdd1a7',hedge:'#9bb98d',water:'#99c3ce'};
@@ -12,7 +12,7 @@ entry.innerHTML=`<div id="world-map"></div>
 <div class="world-header"><div class="world-brand"><i>▦</i> Neighbourhood Studio</div></div>
 <section class="world-search"><form><input type="search" autocomplete="off" required><button class="world-primary" type="submit"></button></form>
 <div class="world-presets"><button id="preset-gem"></button><button id="preset-sample"></button></div><div class="world-results"></div><div role="status" class="world-status"></div>
-<div class="picker-modes" role="group"><button data-mode="buurt"></button><button data-mode="parcel"></button><button data-mode="draw"></button></div><p class="picker-note"></p><button id="draw-finish" class="world-primary" hidden></button></section>
+<div class="picker-modes" role="group"><button data-layer="buurt" aria-pressed="true">Neighbourhoods</button><button data-layer="parcel" aria-pressed="true">Parcels</button></div><p class="picker-note"></p></section>
 <section class="world-card"></section>
 <div class="world-legend"></div>
 <div class="world-views"><button id="world-flat">2D</button><button id="world-tilt">3D</button><button id="world-aerial" aria-pressed="true" title="Aerial photo">Aerial</button><button id="world-plus">+</button><button id="world-minus">−</button></div>
@@ -30,12 +30,10 @@ function renderText(){
  el('[type=submit]').textContent='Search';
  el('#preset-gem').textContent='All of Nijkerk';
  el('#preset-sample').textContent='Nijkerk Centrum';
- for(const b of entry.querySelectorAll('[data-mode]')){b.textContent={buurt:'Neighbourhood',parcel:'Parcel',draw:'Draw polygon'}[b.dataset.mode];b.setAttribute('aria-pressed',String(b.dataset.mode===mode))}
- el('#draw-finish').textContent='Finish polygon';el('#draw-finish').hidden=!(mode==='draw'&&drawing&&pts.length>2);
+ entry.querySelector('[data-layer=buurt]').setAttribute('aria-pressed',String(showBuurt));entry.querySelector('[data-layer=parcel]').setAttribute('aria-pressed',String(showParcel));
  const z=m?m.getZoom():0;
- el('.picker-note').textContent=mode==='buurt'?`CBS neighbourhoods 2026 · ${buurten.length} areas · ${srcText(boundSource)}`
-  :mode==='parcel'?(z<15.5?'Zoom in to street level to show BRK parcels':`BRK parcels · ${n(parcels.length)} · ${srcText(parcelSource)} · Shift-click to add`)
-  :'Click to add vertices; double-click or press Finish';
+ el('.picker-note').textContent=z<15?'Use the neighbourhood boundaries to find your area, then zoom in to street level and click to place the 100 × 100 m site.'
+  :`Click to place the 100 × 100 m site (20 × 20 cells of 5 m); drag it to adjust.${showParcel?` BRK parcels: ${n(parcels.length)} · ${srcText(parcelSource)}.`:''}`;
  el('#world-plus').setAttribute('aria-label','Zoom in');el('#world-minus').setAttribute('aria-label','Zoom out');
  const p=m?m.getPitch()>5:false;el('#world-flat').setAttribute('aria-pressed',String(!p));el('#world-tilt').setAttribute('aria-pressed',String(p));
  el('.world-legend').innerHTML=model?[['building','#f6f6f1','3DBAG blocks'],['road',COLORS.road,'Road'],['green',COLORS.green,'Green'],['water',COLORS.water,'Water'],['tree','#a9c397','Tree']].map(([k,c,t])=>`<span><i style="background:${c}"></i>${t}</span>`).join(''):'';
@@ -45,11 +43,11 @@ function renderCard(){
  const card=el('.world-card'),h=document.createElement('h2'),p=document.createElement('p');
  if(!sel){
   h.textContent=gem?.name||'Nijkerk';
-  p.textContent='Pick a neighbourhood or parcel as your site, or draw a polygon.';
+  p.textContent='Find your area, zoom in and click on the map to place a 100 × 100 m site.';
   card.replaceChildren(h,p);
  }else{
   h.textContent=sel.name;
-  p.textContent=[sel.kindLabel,sel.code,fmtArea(sel.area)].filter(Boolean).join(' · ');
+  p.textContent=[sel.kindLabel,sel.code].filter(Boolean).join(' · ');
   const st=document.createElement('p');st.className='model-status';
   if(loading)st.textContent=`Loading model… ${loading[0]}/${loading[1]}`;
   else if(model){const parts=[`${n(model.buildings.length)} ${'buildings'}`,`${n(model.ground.length)} ${'surfaces'}`,`${n(model.trees.length)} ${'trees'}`];
@@ -130,7 +128,7 @@ function setupLayers(){
  const add=(layer)=>m.addLayer(layer,layer.type==='fill-extrusion'?undefined:first);
  m.addSource('aerial',{type:'raster',tiles:['nsaerial://{z}/{x}/{y}'],tileSize:256,maxzoom:19,attribution:'Luchtfoto © Beeldmateriaal Nederland / PDOK'});
  add({id:'aerial',type:'raster',source:'aerial',paint:{'raster-saturation':-.15,'raster-contrast':.04,'raster-fade-duration':150}});
- for(const id of ['gemeente','buurten','parcels','sel','draft','ground','mask','bld','trees','trunks'])m.addSource(id,{type:'geojson',data:FC([])});
+ for(const id of ['gemeente','buurten','parcels','sel','ground','mask','bld','trees','trunks'])m.addSource(id,{type:'geojson',data:FC([])});
  add({id:'gem-fill',type:'fill',source:'gemeente',paint:{'fill-color':'#ffffff','fill-opacity':.04}});
  add({id:'ground-fill',type:'fill',source:'ground',paint:{'fill-color':['match',['get','kind'],'road',COLORS.road,'green',COLORS.green,'hedge',COLORS.hedge,'water',COLORS.water,'#ddd'],'fill-antialias':false}});
  add({id:'mask-fill',type:'fill',source:'mask',paint:{'fill-color':'#f4f6ef','fill-opacity':.45}});
@@ -145,23 +143,21 @@ function setupLayers(){
  add({id:'sel-fill',type:'fill',source:'sel',paint:{'fill-color':'#ffffff','fill-opacity':.1}});
  add({id:'sel-casing',type:'line',source:'sel',paint:{'line-color':'#ffffff','line-width':6,'line-opacity':.85}});
  add({id:'sel-line',type:'line',source:'sel',paint:{'line-color':'#145c40','line-width':3}});
- add({id:'draft-fill',type:'fill',source:'draft',filter:['==','$type','Polygon'],paint:{'fill-color':'#b8864b','fill-opacity':.2}});
- add({id:'draft-line',type:'line',source:'draft',paint:{'line-color':'#b8864b','line-width':2.5}});
- add({id:'draft-pt',type:'circle',source:'draft',filter:['==','$type','Point'],paint:{'circle-radius':5,'circle-color':'#fff','circle-stroke-color':'#b8864b','circle-stroke-width':2}});
  m.addLayer({id:'bld-out',type:'fill-extrusion',source:'bld',filter:['!',['get','inside']],paint:{'fill-extrusion-color':'#dcdfd6','fill-extrusion-height':['get','h'],'fill-extrusion-opacity':.6,'fill-extrusion-vertical-gradient':true}});
  m.addLayer({id:'bld-in',type:'fill-extrusion',source:'bld',filter:['get','inside'],paint:{'fill-extrusion-color':'#fbfbf7','fill-extrusion-height':['get','h'],'fill-extrusion-opacity':.96,'fill-extrusion-vertical-gradient':true}});
  m.addLayer({id:'tree-trunk',type:'fill-extrusion',source:'trunks',minzoom:15,paint:{'fill-extrusion-color':'#8c8a73','fill-extrusion-height':4.4,'fill-extrusion-base':0}});
  m.addLayer({id:'tree-crown',type:'fill-extrusion',source:'trees',paint:{'fill-extrusion-color':'#a9c397','fill-extrusion-height':7.6,'fill-extrusion-base':4.2,'fill-extrusion-opacity':.95}});
  if(gem)m.getSource('gemeente').setData(FC([{type:'Feature',properties:{},geometry:gem.geometry}]));
- m.on('click',onClick);m.on('dblclick',e=>{if(mode==='draw'&&drawing){e.preventDefault();finishDraw()}});
- m.on('mousemove',onHover);m.on('moveend',()=>{if(mode==='parcel')loadParcels()});
+ m.on('click',onClick);m.on('mousemove',onHover);m.on('moveend',loadParcels);
+ m.on('mousedown','sel-fill',startDrag);m.on('touchstart','sel-fill',startDrag);
  loadBoundaries();renderText();
 }
 let hoverRef=null;
 function onHover(e){
- if(mode==='draw'){m.getCanvas().style.cursor='crosshair';return}
- const layer=mode==='parcel'?'parcel-fill':'buurt-fill',f=m.getLayer(layer)&&m.queryRenderedFeatures(e.point,{layers:[layer]})[0];
+ if(dragSite)return;
  if(hoverRef)m.setFeatureState(hoverRef,{hover:false});hoverRef=null;
+ if(m.getZoom()>=15){m.getCanvas().style.cursor=m.queryRenderedFeatures(e.point,{layers:['sel-fill']}).length?'move':'crosshair';return}
+ const f=showBuurt&&m.getLayer('buurt-fill')&&m.queryRenderedFeatures(e.point,{layers:['buurt-fill']})[0];
  if(f){hoverRef={source:f.source,id:f.id};m.setFeatureState(hoverRef,{hover:true})}
  m.getCanvas().style.cursor=f?'pointer':'';
 }
@@ -174,52 +170,58 @@ async function loadBoundaries(){
  renderText();
 }
 async function loadParcels(){
- if(!m||m.getZoom()<15.5){parcels=[];m?.getSource('parcels').setData(FC([]));renderText();return}
+ renderText();if(!m||!showParcel||m.getZoom()<15.5){parcels=[];m?.getSource('parcels').setData(FC([]));renderText();return}
  parcelCtl?.abort();parcelCtl=new AbortController();const b=m.getBounds();
  try{const r=await D.parcels([b.getWest(),b.getSouth(),b.getEast(),b.getNorth()],parcelCtl.signal);parcels=r.list;parcelSource=r.source;
   m.getSource('parcels').setData(FC(parcels.map((p,i)=>({type:'Feature',id:i,properties:{i},geometry:p.geometry}))));renderText()}catch{}
 }
-function setMode(next){
- mode=next;drawing=next==='draw';pts=[];drawDraft();
- if(m){next==='draw'?m.doubleClickZoom.disable():m.doubleClickZoom.enable();
-  for(const id of ['buurt-fill','buurt-casing','buurt-line','buurt-label'])m?.getLayer(id)&&m.setLayoutProperty(id,'visibility',next==='buurt'?'visible':'none');
-  for(const id of ['parcel-fill','parcel-line'])m.getLayer(id)&&m.setLayoutProperty(id,'visibility',next==='parcel'?'visible':'none');
-  if(next==='parcel'){if(m.getZoom()<15.5)m.easeTo({zoom:16.2,duration:700});else loadParcels()}}
+// ---------- reference layers ----------
+function setLayer(kind,on){
+ if(kind==='buurt'){showBuurt=on;for(const id of ['buurt-fill','buurt-casing','buurt-line','buurt-label'])m?.getLayer(id)&&m.setLayoutProperty(id,'visibility',on?'visible':'none')}
+ else{showParcel=on;for(const id of ['parcel-fill','parcel-line'])m?.getLayer(id)&&m.setLayoutProperty(id,'visibility',on?'visible':'none');loadParcels()}
  renderText();
 }
-entry.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
-el('#draw-finish').onclick=()=>finishDraw();
-function drawDraft(){
- const f=[];if(pts.length>2)f.push({type:'Feature',properties:{},geometry:{type:'Polygon',coordinates:[[...pts,pts[0]]]}});
- if(pts.length>1)f.push({type:'Feature',properties:{},geometry:{type:'LineString',coordinates:pts}});
- pts.forEach(p=>f.push({type:'Feature',properties:{},geometry:{type:'Point',coordinates:p}}));m?.getSource('draft')?.setData(FC(f));
+entry.querySelectorAll('[data-layer]').forEach(b=>b.onclick=()=>setLayer(b.dataset.layer,b.getAttribute('aria-pressed')!=='true'));
+function setMode(){} // kept for older callers: there is only one way to choose a site now
+
+// ---------- the 100 × 100 m site ----------
+const SITE=100,SNAP=5;
+const snapOrigin=([x,y])=>[Math.round((x-SITE/2)/SNAP)*SNAP,Math.round((y-SITE/2)/SNAP)*SNAP];
+function squareWgs([x0,y0]){return{type:'Polygon',coordinates:[[[x0,y0],[x0+SITE,y0],[x0+SITE,y0+SITE],[x0,y0+SITE],[x0,y0]].map(([x,y])=>D.geo.toWgs(x,y))]}}
+function buurtAt(lon,lat){return buurten.find(b=>D.contains(b.geometry,lon,lat))}
+function placeSite(origin,{fly=false}={}){
+ const [x0,y0]=origin,c=D.geo.toWgs(x0+SITE/2,y0+SITE/2),b=buurtAt(c[0],c[1]);
+ select({kind:'site',name:b?`Site · ${b.name}`:'Site',code:`RD ${x0}, ${y0}`,kindLabel:'100 × 100 m site',buurt:b?.code||null,origin,geometry:squareWgs(origin)},{fly});
 }
-function finishDraw(){
- const q=pts.filter((p,i)=>!i||Math.hypot(p[0]-pts[i-1][0],p[1]-pts[i-1][1])>1e-8);
- if(q.length<3){status('At least 3 vertices are needed.');return}
- status('');drawing=false;pts=[];drawDraft();
- select({kind:'draw',name:'Custom area',kindLabel:'Drawn polygon',geometry:{type:'Polygon',coordinates:[[...q,q[0]]]}});
- drawing=true;renderText();
-}
+function placeSiteAtLngLat(ll,opts){placeSite(snapOrigin(D.geo.toRd(ll.lng,ll.lat)),opts)}
+function flyToBuurt(b){const w=D.bboxOf(b.geometry);m?.fitBounds([[w[0],w[1]],[w[2],w[3]]],{padding:pad({top:80,bottom:80,left:440,right:80}),pitch:0,bearing:0,maxZoom:17,duration:1100})}
 function onClick(e){
- if(mode==='draw'){pts.push([e.lngLat.lng,e.lngLat.lat]);drawDraft();renderText();return}
- if(mode==='parcel'){
-  const f=m.queryRenderedFeatures(e.point,{layers:['parcel-fill']})[0];if(!f)return;const p=parcels[f.properties.i];if(!p)return;
-  let list=[p];
-  if(e.originalEvent.shiftKey&&sel?.kind==='parcel'){const has=sel.items.some(x=>x.id===p.id);list=has?sel.items.filter(x=>x.id!==p.id):[...sel.items,p];if(!list.length){clearSelection();return}}
-  const name=list.length===1?'Parcel '+p.label:`${list.length} parcels`;
-  select({kind:'parcel',items:list,name,code:list.length===1?'BRK':'BRK · '+list.map(x=>x.label.split(' ').slice(-1)[0]).join(', ').slice(0,60),kindLabel:'BRK cadastral parcel',geometry:multi(list.map(x=>x.geometry))},{fly:false});
-  return;
- }
- const f=m.queryRenderedFeatures(e.point,{layers:['buurt-fill']})[0];if(!f)return;const b=buurten[f.properties.i];if(b)selectBuurt(b);
+ if(dragSite||performance.now()-dragEnded<300)return;
+ if(m.getZoom()<15){
+  const f=showBuurt&&m.queryRenderedFeatures(e.point,{layers:['buurt-fill']})[0],b=f&&buurten[f.properties.i];
+  if(b)flyToBuurt(b);else m.flyTo({center:e.lngLat,zoom:16.5,duration:1000});
+  status('Zoom in to street level, then click to place the site.');return}
+ if(m.queryRenderedFeatures(e.point,{layers:['sel-fill']}).length)return;
+ status('');placeSiteAtLngLat(e.lngLat);
 }
-function selectBuurt(b){select({kind:'buurt',name:b.name,code:b.code,kindLabel:'CBS neighbourhood',geometry:b.geometry})}
+function startDrag(e){
+ if(!sel||(e.points&&e.points.length>1))return;
+ e.preventDefault();m.dragPan.disable();
+ dragSite={start:D.geo.toRd(e.lngLat.lng,e.lngLat.lat),origin:sel.origin,now:sel.origin};
+ m.getCanvas().style.cursor='grabbing';
+ const move=ev=>{const p=D.geo.toRd(ev.lngLat.lng,ev.lngLat.lat),o=[Math.round((dragSite.origin[0]+p[0]-dragSite.start[0])/SNAP)*SNAP,Math.round((dragSite.origin[1]+p[1]-dragSite.start[1])/SNAP)*SNAP];
+  if(o[0]===dragSite.now[0]&&o[1]===dragSite.now[1])return;dragSite.now=o;m.getSource('sel').setData(FC([{type:'Feature',properties:{},geometry:squareWgs(o)}]))};
+ const up=()=>{m.off('mousemove',move);m.off('touchmove',move);m.dragPan.enable();const d=dragSite;dragSite=null;dragEnded=performance.now();m.getCanvas().style.cursor='move';
+  if(d.now[0]!==d.origin[0]||d.now[1]!==d.origin[1])placeSite(d.now)};
+ m.on('mousemove',move);m.on('touchmove',move);m.once('mouseup',up);m.once('touchend',up);
+}
+function selectBuurt(b){const c=D.bboxOf(D.toRdGeom(b.geometry));placeSite(snapOrigin([(c[0]+c[2])/2,(c[1]+c[3])/2]),{fly:true})}
 function clearSelection(){modelCtl?.abort();sel=null;model=null;loading=null;message=D.online===false?message:'';showModel(null);m?.getSource('sel').setData(FC([]));renderText()}
 async function select(s,{fly=true}={}){
- const rd=D.toRdGeom(s.geometry),area=D.area(rd),b=D.bboxOf(rd),centerRd=[(b[0]+b[2])/2,(b[1]+b[3])/2];
+ const rd=s.origin?{type:'MultiPolygon',coordinates:[[[[s.origin[0],s.origin[1]],[s.origin[0]+SITE,s.origin[1]],[s.origin[0]+SITE,s.origin[1]+SITE],[s.origin[0],s.origin[1]+SITE],[s.origin[0],s.origin[1]]]]]}:D.toRdGeom(s.geometry),area=D.area(rd),b=D.bboxOf(rd),centerRd=[(b[0]+b[2])/2,(b[1]+b[3])/2];
  sel={...s,rd,area,centerRd,center:D.geo.toWgs(...centerRd)};
  m?.getSource('sel').setData(FC([{type:'Feature',properties:{},geometry:s.geometry}]));
- if(fly&&m){const w=D.bboxOf(s.geometry);m.fitBounds([[w[0],w[1]],[w[2],w[3]]],{padding:pad({top:90,bottom:90,left:440,right:90}),pitch:50,bearing:-18,maxZoom:18,duration:1200})}
+ if(fly&&m){const w=D.bboxOf(s.geometry);m.fitBounds([[w[0],w[1]],[w[2],w[3]]],{padding:pad({top:140,bottom:140,left:480,right:140}),pitch:50,bearing:-18,maxZoom:18.2,duration:1200})}
  await loadModel();
 }
 async function loadModel(){
@@ -250,11 +252,11 @@ el('form').onsubmit=async e=>{
  const nums=q.match(/^([+-]?\d+(?:\.\d+)?)\s*(?:[,;]\s*|\s+)([+-]?\d+(?:\.\d+)?)$/);
  if(nums){const lat=+nums[1],lon=+nums[2];if(Math.abs(lat)>85||Math.abs(lon)>180){status('Coordinates out of range.');return}m?.flyTo({center:[lon,lat],zoom:17,duration:1400});return}
  const key=q.toLocaleLowerCase(),hits=buurten.filter(b=>b.name.toLocaleLowerCase().includes(key)||b.code.toLowerCase()===key).slice(0,6);
- for(const b of hits){const x=btn(b.name,()=>{results.replaceChildren();setMode('buurt');selectBuurt(b)});const s=document.createElement('small');s.textContent=b.wijk||b.code;x.append(s);results.append(x)}
+ for(const b of hits){const x=btn(b.name,()=>{results.replaceChildren();flyToBuurt(b);status('Zoom in and click to place the 100 × 100 m site.')});const s=document.createElement('small');s.textContent=b.wijk||b.code;x.append(s);results.append(x)}
  if(!hits.length)status('No Nijkerk neighbourhood matches.');
 };
 el('#preset-gem').onclick=()=>{clearSelection();if(gem&&m){const b=D.bboxOf(gem.geometry);m.fitBounds([[b[0],b[1]],[b[2],b[3]]],{padding:pad({top:60,bottom:60,left:420,right:60}),pitch:0,bearing:0,duration:1200})}};
-el('#preset-sample').onclick=()=>{setMode('buurt');const b=buurten.find(x=>x.code===(S?.sampleBuurt||'BU02670106'));if(b)selectBuurt(b)};
+el('#preset-sample').onclick=()=>{const b=buurten.find(x=>x.code===(S?.sampleBuurt||'BU02670106'));if(b)selectBuurt(b)};
 el('#world-aerial').onclick=()=>{aerialOn=!aerialOn;m?.getLayer('aerial')&&m.setLayoutProperty('aerial','visibility',aerialOn?'visible':'none');el('#world-aerial').setAttribute('aria-pressed',String(aerialOn))};
 el('#world-flat').onclick=()=>m?.easeTo({pitch:0,bearing:0,duration:700});
 el('#world-tilt').onclick=()=>m?.easeTo({pitch:55,bearing:-20,duration:700});
@@ -264,10 +266,10 @@ el('#world-minus').onclick=()=>m?.zoomTo(m.getZoom()-1,{duration:300});
 // ---------- hand-off to the editor ----------
 function capture(center){return new Promise(res=>{
  const c=m.getCanvas(),w=c.clientWidth,h=c.clientHeight,mpp=200/(.8*Math.min(w,h)),z=Math.min(19,Math.log2(40075016.686*Math.cos(center[1]*Math.PI/180)/(512*mpp)));
- const hide=['sel-fill','sel-casing','sel-line','buurt-fill','buurt-casing','buurt-line','buurt-label','gem-casing','parcel-fill','parcel-line','draft-fill','draft-line','draft-pt','mask-fill'].filter(id=>m.getLayer(id));
+ const hide=['sel-fill','sel-casing','sel-line','buurt-fill','buurt-casing','buurt-line','buurt-label','gem-casing','parcel-fill','parcel-line','mask-fill'].filter(id=>m.getLayer(id));
  m.stop();hide.forEach(id=>m.setLayoutProperty(id,'visibility','none'));m.jumpTo({center,zoom:z,pitch:0,bearing:0});let done=false,timer;
  const snap=()=>{if(done)return;done=true;clearTimeout(timer);let v=null;try{const S=Math.round(200/mpp*c.width/w),o=document.createElement('canvas');o.width=o.height=Math.min(1024,S);o.getContext('2d').drawImage(c,(c.width-S)/2,(c.height-S)/2,S,S,0,0,o.width,o.height);v={url:o.toDataURL('image/jpeg',.85),size:o.width}}catch{}
-  hide.forEach(id=>m.setLayoutProperty(id,'visibility','visible'));setMode(mode);res(v)};
+  hide.forEach(id=>m.setLayoutProperty(id,'visibility','visible'));setLayer('buurt',showBuurt);setLayer('parcel',showParcel);res(v)};
  m.once('idle',snap);timer=setTimeout(snap,2200)})}
 async function enterSite(){
  if(!sel||loading)return;
@@ -279,11 +281,11 @@ async function enterSite(){
  try{status('Loading parcel boundaries…');const r=D.bboxOf(sel.rd),[cx,cy]=sel.centerRd,a=D.geo.toWgs(Math.min(r[0],cx-55)-10,Math.min(r[1],cy-55)-10),b=D.geo.toWgs(Math.max(r[2],cx+55)+10,Math.max(r[3],cy+55)+10);gridParcels=(await D.parcels([a[0],a[1],b[0],b[1]])).list}catch{}
  status('');
  document.body.classList.remove('world-is-open');
- window.dispatchEvent(new CustomEvent('enter-design-site',{detail:{name:sel.name,kind:sel.kind,code:sel.code||null,geometry:sel.geometry,center:sel.center,rd:{geometry:sel.rd,center:sel.centerRd},model:hasModel?model:null,parcels:gridParcels,study:false}}));
+ window.dispatchEvent(new CustomEvent('enter-design-site',{detail:{name:sel.name,kind:sel.kind,code:sel.code||null,geometry:sel.geometry,center:sel.center,rd:{geometry:sel.rd,center:sel.centerRd,origin:sel.origin||null,size:sel.origin?SITE:null},model:hasModel?model:null,parcels:gridParcels,study:false}}));
  entry.classList.add('fading');setTimeout(()=>{entry.hidden=true;entry.classList.remove('fading')},850);
 }
 window.openWorldMap=()=>{entry.hidden=false;entry.classList.remove('fading');document.body.classList.add('world-is-open');renderText();requestAnimationFrame(()=>m?.resize())};
-window.NSPicker={select:s=>select(s),selectBuurt:code=>{const b=buurten.find(x=>x.code===code);if(b)selectBuurt(b)},setMode,get state(){return{mode,sel,model,loading,message,buurten:buurten.length,parcels:parcels.length,online:D.online}},get map(){return m},enterSite};
+window.NSPicker={select:s=>select(s),selectBuurt:code=>{const b=buurten.find(x=>x.code===code);if(b)selectBuurt(b)},placeSite:(lon,lat,opts)=>placeSiteAtLngLat({lng:lon,lat},opts),setMode,setLayer,get state(){return{sel,model,loading,message,buurten:buurten.length,parcels:parcels.length,online:D.online}},get map(){return m},enterSite};
 
 async function init(){
  renderText();
